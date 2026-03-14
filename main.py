@@ -1,7 +1,9 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-import io 
-from rag_service import rag_logic
+import io
+
+from sympy import content 
+from app import rag_logic
 
 app = FastAPI()
 
@@ -19,7 +21,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024 # 10MB
 async def upload(file: UploadFile = File(...)):
     # 1. Đọc nội dung file
     file_content = await file.read()
-    
+    print(f"Received file: {file.filename}, size: {len(file_content)} bytes , content: {file_content[:100]}") # In ra 100 bytes đầu tiên để debug
     # 2. Kiểm tra dung lượng
     if len(file_content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File quá lớn! Vui lòng upload file dưới 10MB.")
