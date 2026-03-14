@@ -1,0 +1,23 @@
+# Framework chính
+langchain>=0.3.16
+langchain-community>=0.3.16
+langchain-ollama
+langchain-huggingface
+
+# Vector Store & AI Models
+faiss-cpu
+sentence-transformers
+transformers
+torch
+
+# Xử lý tài liệu
+pdfplumber
+pypdf
+
+# Tiện ích & Server
+numpy
+pandas
+streamlit
+fastapi
+uvicorn
+python-multipart

@@ -14,7 +14,6 @@ class RAGService:
         self.index_path = index_path
         self.data_dir = data_dir
         
-        # Đảm bảo thư mục data tồn tại
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir)
         
@@ -27,14 +26,16 @@ class RAGService:
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         self.vector_db = None
 
-        # Tải Index cũ hoặc quét thư mục data
+        # Nạp Index cũ nếu có, nếu không thì quét data_dir
         if os.path.exists(self.index_path):
+            print(f"💾 Loading index from {self.index_path}...")
             self.vector_db = FAISS.load_local(
                 self.index_path, 
                 self.embedder, 
                 allow_dangerous_deserialization=True
             )
         elif os.listdir(self.data_dir):
+            print(f"📂 Scanning directory {self.data_dir}...")
             self.load_directory(self.data_dir)
 
     def load_directory(self, path: str):
@@ -49,14 +50,14 @@ class RAGService:
             self.vector_db.save_local(self.index_path)
 
     def process_pdf(self, file_content: bytes):
-        """Xử lý bytes từ FastAPI bằng cách tạo file tạm"""
-        # 1. Tạo file tạm để PDFPlumberLoader có thể đọc đường dẫn
+        """Xử lý bytes từ FastAPI bằng cách tạo file tạm để loader đọc được"""
+        # Tạo file tạm thời với suffix .pdf
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(file_content)
             temp_path = temp_file.name
 
         try:
-            # 2. Sử dụng đường dẫn file tạm
+            # Loader sẽ đọc đường dẫn file (string) thay vì đối tượng BytesIO
             loader = PDFPlumberLoader(temp_path)
             docs = loader.load()
             chunks = self.text_splitter.split_documents(docs)
@@ -69,24 +70,24 @@ class RAGService:
             self.save_index()
             return len(chunks)
         finally:
-            # 3. QUAN TRỌNG: Xóa file tạm sau khi đã nạp vào Vector DB
+            # Xóa file ngay sau khi xử lý xong để dọn dẹp hệ thống
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
     def get_answer(self, question: str):
         if not self.vector_db:
-            return "Hệ thống chưa có dữ liệu tài liệu."
+            return "Hệ thống chưa có dữ liệu. Vui lòng upload PDF hoặc kiểm tra thư mục data."
 
         vn_chars = 'áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ'
         is_vn = any(c in question.lower() for c in vn_chars)
 
         template = """Sử dụng ngữ cảnh sau để trả lời. Trả lời súc tích.
-        Ngữ cảnh: {context}
-        Câu hỏi: {question}
-        Trả lời:""" if is_vn else """Answer using context:
-        Context: {context}
-        Question: {question}
-        Answer:"""
+Ngữ cảnh: {context}
+Câu hỏi: {question}
+Trả lời:""" if is_vn else """Use the context to answer shortly.
+Context: {context}
+Question: {question}
+Answer:"""
 
         prompt = PromptTemplate(template=template, input_variables=["context", "question"])
         qa_chain = RetrievalQA.from_chain_type(
@@ -97,4 +98,5 @@ class RAGService:
         )
         return qa_chain.invoke({"query": question})["result"]
 
+# Khởi tạo instance duy nhất
 rag_logic = RAGService()

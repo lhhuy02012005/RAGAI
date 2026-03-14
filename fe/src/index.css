@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+/* Định nghĩa các biến màu cho dự án SmartDoc AI  */
+@theme {
+  --color-chat-bg: #212121;
+  --color-sidebar-bg: #171717;
+  --color-input-bg: #2f2f2f;
+  --color-bot-green: #10a37f;
+}
+
+/* Áp dụng vào body [cite: 384, 386] */
+@layer base {
+  body {
+    background-color: var(--color-chat-bg);
+    color: #ececf1;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+  }
+}

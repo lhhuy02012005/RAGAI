@@ -1,0 +1,30 @@
+# --- Core LLM Framework ---
+langchain==0.3.16
+langchain-community==0.3.16
+langchain-ollama==0.2.2
+langchain-huggingface==0.1.2
+
+# --- Vector Database & Embeddings ---
+faiss-cpu>=1.9.0
+sentence-transformers==3.3.1
+transformers
+torch
+
+# --- Document Processing ---
+pdfplumber
+pypdf
+unstructured[pdf]
+
+# --- Data Science & Utilities ---
+numpy
+pandas
+tqdm
+python-dotenv
+
+# --- Frontend & UI ---
+streamlit==1.41.1
+
+# --- Server & API (Kết nối React với FastAPI) ---
+fastapi
+uvicorn
+python-multipart
