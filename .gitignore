@@ -1,32 +1,23 @@
 # --- Python / Backend ---
-__pycache__/
+**/__pycache__/
 *.py[cod]
-*$py.class
 venv/
-env/
-build/
-dist/
-.DS_Store
+backend/vector_stores/
+backend/__pycache__/
 
-# --- Node / Frontend ---
+# --- Node / Frontend (Sửa 'frontend' thành 'fe') ---
+fe/node_modules/
+fe/dist/
 node_modules/
-frontend/node_modules/
-frontend/dist/
-frontend/.DS_Store
 
-# --- BIẾN MÔI TRƯỜNG (QUAN TRỌNG) ---
-# Ignore tất cả các file .env ở mọi thư mục (gốc và frontend)
+# --- Dữ liệu & Môi trường ---
 .env
 .env.*
 !.env.example
-frontend/.env
-frontend/.env.*
-
-# --- Docker & Vector DB ---
-vector_stores/
+fe/.env.*
 db_data/
-.docker-volumes/
+data/
+documenttation/
 
-# --- Cloudflare ---
-.cloudflared/
-cert.pem
+# --- System ---
+.DS_Store
