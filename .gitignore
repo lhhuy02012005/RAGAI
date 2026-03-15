@@ -1,4 +1,33 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-.env/
-venv/
+# --- Python / Backend ---
 __pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+build/
+dist/
+.DS_Store
+
+# --- Node / Frontend ---
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.DS_Store
+
+# --- BIẾN MÔI TRƯỜNG (QUAN TRỌNG) ---
+# Ignore tất cả các file .env ở mọi thư mục (gốc và frontend)
+.env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+
+# --- Docker & Vector DB ---
+vector_stores/
+db_data/
+.docker-volumes/
+
+# --- Cloudflare ---
+.cloudflared/
+cert.pem
