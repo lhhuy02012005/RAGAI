@@ -33,7 +33,8 @@ const App: React.FC = () => {
   // Nếu chưa có masterKey trong RAM, hiện PinModal
   if (!masterKey) {
     return (
-      <PinModal 
+      <PinModal
+        token={token} 
         deviceSecret={deviceSecret || ""} 
         onKeyReady={(key) => setMasterKey(key)} 
       />

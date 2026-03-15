@@ -69,24 +69,138 @@ class RAGService:
 
     def get_answer(self, question_raw: str, user_id: int):
         user_path = self._get_user_path(user_id)
-        if not os.path.exists(os.path.join(user_path, "index.faiss")):
-            return "Bạn chưa nạp tài liệu cho bộ não AI của mình."
+        index_path = os.path.join(user_path, "index.faiss")
+        
+        context = ""
+        # 1. Tìm kiếm thông tin từ Vector DB (nếu có)
+        if os.path.exists(index_path):
+            try:
+                vector_db = FAISS.load_local(
+                    user_path, 
+                    self.embedder, 
+                    allow_dangerous_deserialization=True
+                )
+                # Lấy 3 đoạn văn bản có độ tương đồng cao nhất
+                docs = vector_db.similarity_search(question_raw, k=3)
+                context = "\n".join([f"- {doc.page_content}" for doc in docs])
+                print(f"✅ Found context for user {user_id}")
+            except Exception as e:
+                print(f"❌ FAISS Error: {e}")
 
-        vector_db = FAISS.load_local(user_path, self.embedder, allow_dangerous_deserialization=True)
+        # 2. Xây dựng Prompt "Pro" phân cấp rõ ràng
+        if context:
+            prompt = f"""
+### VAI TRÒ
+Bạn là SmartDoc AI - Một chuyên gia phân tích dữ liệu chuyên nghiệp và tận tâm.
+
+### NGỮ CẢNH HỖ TRỢ
+{context}
+
+### CHỈ DẪN TRẢ LỜI
+1. ƯU TIÊN: Kiểm tra 'NGỮ CẢNH HỖ TRỢ' để trả lời câu hỏi. 
+2. LINH HOẠT: Nếu ngữ cảnh không đủ thông tin hoặc không liên quan, hãy sử dụng kiến thức chuyên sâu của bạn để giải đáp.
+3. PHONG CÁCH: Trả lời bằng tiếng Việt, văn phong chuyên nghiệp, trình bày rõ ràng (dùng gạch đầu dòng nếu cần).
+
+### CÂU HỎI CỦA NGƯỜI DÙNG
+{question_raw}
+
+### CÂU TRẢ LỜI:
+"""
+        else:
+            # Prompt khi hoàn toàn không có tài liệu
+            prompt = f"""
+### VAI TRÒ
+Bạn là SmartDoc AI - Trợ lý thông minh cao cấp.
+
+### CHỈ DẪN
+Hãy trả lời câu hỏi dưới đây một cách chi tiết, chính xác bằng kiến thức của bạn. Trả lời bằng tiếng Việt.
+
+### CÂU HỎI
+{question_raw}
+
+### CÂU TRẢ LỜI:
+"""
+
+        # 3. Thực thi gọi LLM
+        try:
+            response = self.llm.invoke(prompt)
+            # Trả về nội dung text từ AI
+            return response.content if hasattr(response, 'content') else str(response)
+        except Exception as e:
+            print(f"🔥 Ollama Connection Error: {e}")
+            return "Xin lỗi, tôi gặp trục trặc khi kết nối với bộ não AI. Vui lòng thử lại sau."
+        user_path = self._get_user_path(user_id)
+        index_path = os.path.join(user_path, "index.faiss")
         
-        template = """Sử dụng ngữ cảnh sau để trả lời. Trả lời chi tiết bằng Tiếng Việt.
-        Ngữ cảnh: {context}
-        Câu hỏi: {question}
-        Trả lời:"""
+        context = ""
+        # Thử tìm kiếm tài liệu
+        if os.path.exists(index_path):
+            try:
+                # Phải load_local với allow_dangerous_deserialization=True
+                vector_db = FAISS.load_local(
+                    user_path, 
+                    self.embedder, 
+                    allow_dangerous_deserialization=True
+                )
+                docs = vector_db.similarity_search(question_raw, k=3)
+                context = "\n".join([doc.page_content for doc in docs])
+                print(f"--- Đã tìm thấy ngữ cảnh cho User {user_id} ---")
+            except Exception as e:
+                print(f"--- Lỗi FAISS (có thể file hỏng): {e} ---")
+                # Nếu lỗi FAISS, context vẫn rỗng và AI sẽ dùng kiến thức gốc
+
+        # XÂY DỰNG PROMPT
+        if context:
+            prompt = f"""Sử dụng ngữ cảnh sau đây để trả lời câu hỏi. 
+            Nếu trong ngữ cảnh không có thông tin, hãy dùng kiến thức hiểu biết của bạn để trả lời.
+            Trả lời bằng tiếng Việt.
+
+            Ngữ cảnh: {context}
+            Câu hỏi: {question_raw}
+            Trả lời:"""
+        else:
+            # Đây là phần giúp AI trả lời khi chưa có tài liệu
+            prompt = f"Bạn là một trợ lý AI thông minh. Hãy trả lời câu hỏi sau bằng tiếng Việt: {question_raw}"
+
+        try:
+            # Gọi trực tiếp LLM
+            response = self.llm.invoke(prompt)
+            return response.content if hasattr(response, 'content') else str(response)
+        except Exception as e:
+            print(f"🔥 Lỗi kết nối Ollama: {e}")
+            return "Xin lỗi, tôi không thể kết nối với bộ não AI lúc này."
+        user_path = self._get_user_path(user_id)
+        index_path = os.path.join(user_path, "index.faiss")
         
-        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=self.llm,
-            retriever=vector_db.as_retriever(search_kwargs={"k": 3}),
-            chain_type_kwargs={"prompt": prompt}
-        )
-        # Sử dụng invoke thay vì run (LangChain chuẩn mới)
-        result = qa_chain.invoke({"query": question_raw})
-        return result["result"]
+        context = ""
+        # Nếu có tài liệu thì mới đi tìm kiến thức trong Vector DB
+        if os.path.exists(index_path):
+            try:
+                vector_db = FAISS.load_local(user_path, self.embedder, allow_dangerous_deserialization=True)
+                # Tìm 3 đoạn văn bản liên quan nhất
+                docs = vector_db.similarity_search(question_raw, k=3)
+                context = "\n".join([doc.page_content for doc in docs])
+            except Exception as e:
+                print(f"Lỗi load FAISS: {e}")
+
+        # Prompt linh hoạt: Có context thì dùng, không có thì trả lời tự do
+        if context:
+            prompt = f"""Bạn là một trợ lý AI thông minh. Sử dụng ngữ cảnh dưới đây để trả lời câu hỏi. 
+            Nếu ngữ cảnh không chứa thông tin, hãy dùng kiến thức của bạn để trả lời nhưng ưu tiên ngữ cảnh trước.
+            
+            Ngữ cảnh: {context}
+            Câu hỏi: {question_raw}
+            Trả lời:"""
+        else:
+            prompt = f"Câu hỏi: {question_raw}\nTrả lời bằng Tiếng Việt chi tiết:"
+
+        # Gọi LLM trả lời trực tiếp (dùng invoke)
+        try:
+            response = self.llm.invoke(prompt)
+            # Tùy vào phiên bản langchain-ollama, response có thể là object hoặc string
+            return response.content if hasattr(response, 'content') else str(response)
+        except Exception as e:
+            print(f"Lỗi gọi Ollama: {e}")
+            return "Xin lỗi, bộ não AI đang bận xử lý dữ liệu khác."
 
 rag_logic = RAGService()

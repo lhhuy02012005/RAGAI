@@ -131,3 +131,17 @@ async def get_history(
         ChatMessage.user_id == current_user.id
     ).order_by(ChatMessage.timestamp.asc()).all()
     return messages
+
+
+# --- 6. LẤY DANH SÁCH TẤT CẢ HỘI THOẠI (DÀNH CHO SIDEBAR) ---
+@app.get("/conversations")
+async def get_all_conversations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user)
+):
+    # Lấy danh sách các cuộc hội thoại của User này, mới nhất xếp lên trên
+    conversations = db.query(Conversation).filter(
+        Conversation.user_id == current_user.id
+    ).order_by(Conversation.created_at.desc()).all()
+    
+    return conversations

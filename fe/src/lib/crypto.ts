@@ -15,8 +15,8 @@ export async function deriveKeyFromPin(pin: string, salt: string) {
   );
 }
 
-// 2. Gói chìa khóa (Wrap) để lưu vào localStorage
-export async function saveKeyToStorage(masterKey: CryptoKey, deviceSecret: string) {
+// Thêm tham số userId vào hàm
+export async function saveKeyToStorage(masterKey: CryptoKey, deviceSecret: string, userId: string) {
   const encoder = new TextEncoder();
   const wrappingKey = await window.crypto.subtle.importKey(
     "raw", 
@@ -34,15 +34,14 @@ export async function saveKeyToStorage(masterKey: CryptoKey, deviceSecret: strin
     { name: "AES-GCM", iv }
   );
 
-  localStorage.setItem("wrapped_key", btoa(String.fromCharCode(...new Uint8Array(wrapped))));
-  localStorage.setItem("key_iv", btoa(String.fromCharCode(...iv)));
+  // LƯU RIÊNG THEO USER ID
+  localStorage.setItem(`wrapped_key_${userId}`, btoa(String.fromCharCode(...new Uint8Array(wrapped))));
+  localStorage.setItem(`key_iv_${userId}`, btoa(String.fromCharCode(...iv)));
 }
 
-// 3. Mở gói chìa khóa (Unwrap) - ĐÂY LÀ HÀM BẠN ĐANG THIẾU
+// 3. Mở gói chìa khóa (Unwrap)
 export async function unwrapKey(wrappedKeyBase64: string, ivBase64: string, deviceSecret: string) {
   const encoder = new TextEncoder();
-  
-  // Chuyển đổi từ Base64 ngược lại dạng Buffer
   const wrappedKeyBuffer = Uint8Array.from(atob(wrappedKeyBase64), c => c.charCodeAt(0));
   const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
 
@@ -65,15 +64,41 @@ export async function unwrapKey(wrappedKeyBase64: string, ivBase64: string, devi
   );
 }
 
-// 4. Mã hóa tin nhắn trước khi gửi
+// 4. Mã hóa tin nhắn: Gộp IV vào chung chuỗi để lưu vào DB dễ dàng hơn
 export async function encryptMessage(text: string, key: CryptoKey) {
   const encoder = new TextEncoder();
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await window.crypto.subtle.encrypt(
     { name: "AES-GCM", iv }, key, encoder.encode(text)
   );
-  return {
-    cipher: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
-    iv: btoa(String.fromCharCode(...iv))
+
+  // Đóng gói IV và Cipher thành một JSON Base64 để lưu vào 1 cột duy nhất trong DB
+  const packet = {
+    iv: Array.from(iv),
+    cipher: Array.from(new Uint8Array(encrypted))
   };
+  return {
+    cipher: btoa(JSON.stringify(packet))
+  };
+}
+
+// 5. GIẢI MÃ TIN NHẮN (Hàm bạn đang thiếu)
+export async function decryptMessage(ciphertextBase64: string, key: CryptoKey) {
+  try {
+    // Giải mã gói JSON
+    const packet = JSON.parse(atob(ciphertextBase64));
+    const iv = new Uint8Array(packet.iv);
+    const encryptedData = new Uint8Array(packet.cipher);
+
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      encryptedData
+    );
+
+    return new TextDecoder().decode(decrypted);
+  } catch (e) {
+    console.error("Lỗi giải mã:", e);
+    return "[Lỗi: Không thể giải mã tin nhắn này]";
+  }
 }

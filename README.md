@@ -10,4 +10,4 @@ Mặc định Ollama chỉ nghe ở 127.0.0.1. Bạn cần đặt biến môi tr
 
 npm run dev -- --mode production
 OLLAMA_HOST=0.0.0.0:11434 ollama serve
-npx cloudflared tunnel --url http://localhost:5173
+npx cloudflared tunnel --url http://127.0.0.1:5173
