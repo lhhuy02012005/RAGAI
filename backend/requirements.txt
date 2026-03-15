@@ -1,0 +1,30 @@
+# AI & RAG
+langchain==0.3.16
+langchain-community==0.3.16
+langchain-ollama==0.2.2
+langchain-huggingface==0.1.2
+faiss-cpu>=1.9.0
+sentence-transformers==3.3.1
+transformers
+torch
+
+# Tài liệu
+pdfplumber
+pypdf
+python-docx
+unstructured[pdf]
+
+# Server & Security
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+sqlalchemy
+psycopg2-binary
+passlib[bcrypt]
+python-jose[cryptography]
+
+# Utilities
+numpy
+pandas
+tqdm

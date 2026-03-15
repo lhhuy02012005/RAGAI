@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:15
+    container_name: db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: smartdoc_db
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432" # Quan trọng: Để bạn chạy uvicorn local kết nối được
+    networks:
+      - internal_net
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      - DB_HOST=db # Nói cho code Python biết dùng host 'db' khi ở trong Docker
+      - DB_PASSWORD=${DB_PASSWORD}
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      - db
+    networks:
+      - internal_net
+    volumes:
+      - ./backend/vector_stores:/app/vector_stores
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --url http://backend:8000
+    networks:
+      - internal_net
+    restart: always
+
+networks:
+  internal_net:
+    driver: bridge
