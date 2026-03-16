@@ -3,6 +3,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, sta
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime
+import shutil
 
 # Import từ các file nội bộ
 from database import get_db, ChatMessage, User, Conversation
@@ -10,6 +11,7 @@ from app import rag_logic
 import auth
 
 app = FastAPI(title="SmartDoc Enterprise AI")
+
 
 # --- CẤU HÌNH CORS MẠNH TAY ---
 # Cho phép tất cả để vượt qua lỗi Blocked by CORS khi dùng Cloudflare
@@ -75,15 +77,13 @@ async def login(
 @app.post("/upload")
 async def upload(
     file: UploadFile = File(...), 
+    chunk_size: int = Form(1000), 
+    chunk_overlap: int = Form(100),
     current_user: User = Depends(auth.get_current_user)
 ):
-    try:
-        content = await file.read()
-        count = rag_logic.process_file(content, file.filename, current_user.id)
-        return {"status": "ok", "filename": file.filename, "chunks": count}
-    except Exception as e:
-        print(f"🔥 Upload Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Lỗi xử lý file")
+    content = await file.read()
+    count = rag_logic.process_file(content, file.filename, current_user.id, chunk_size, chunk_overlap)
+    return {"status": "ok", "chunks": count}
 
 # --- 4. ENDPOINT HỎI ĐÁP AI ---
 @app.post("/ask")
@@ -94,31 +94,25 @@ async def ask(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user)
 ):
-    # Tạo hội thoại trước
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
-        conv = Conversation(
-            id=conversation_id, 
-            user_id=current_user.id, 
-            title=question_raw[:30] + "..."
-        )
+        conv = Conversation(id=conversation_id, user_id=current_user.id, title=question_raw[:30] + "...")
         db.add(conv)
         db.commit()
 
-    # Lấy câu trả lời từ RAG
-    try:
-        answer_raw = rag_logic.get_answer(question_raw, current_user.id)
-    except Exception as e:
-        print(f"🔥 RAG Error: {e}")
-        answer_raw = "AI đang bận, thử lại sau nhé."
-
-    # Lưu lịch sử
+    # Lưu tin nhắn người dùng (Zero-Knowledge)
     db.add(ChatMessage(conversation_id=conversation_id, user_id=current_user.id, role="user", content=question_enc))
-    db.add(ChatMessage(conversation_id=conversation_id, user_id=current_user.id, role="bot", content=answer_raw))
+
+    # GỌI RAG LOGIC: Bây giờ truyền 3 tham số để dùng được Memory (Câu hỏi 6)
+    result = rag_logic.get_answer(question_raw, current_user.id, conversation_id)
+    
+    answer_text = result["answer"]
+    sources = result["sources"]
+
+    db.add(ChatMessage(conversation_id=conversation_id, user_id=current_user.id, role="bot", content=answer_text))
     db.commit()
     
-    return {"answer_raw": answer_raw}
-
+    return {"answer_raw": answer_text, "sources": sources}
 # --- 5. LẤY LỊCH SỬ ---
 @app.get("/history/{conversation_id}")
 async def get_history(
@@ -145,3 +139,22 @@ async def get_all_conversations(
     ).order_by(Conversation.created_at.desc()).all()
     
     return conversations
+
+# --- 7. XÓA LỊCH SỬ ---
+@app.delete("/clear-history")
+async def clear_history(current_user: User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    db.query(ChatMessage).filter(ChatMessage.user_id == current_user.id).delete()
+    db.query(Conversation).filter(Conversation.user_id == current_user.id).delete()
+    db.commit()
+    return {"message": "Đã xóa lịch sử chat"}
+
+# --- 8. XÓA VECTO STORE ---
+@app.delete("/clear-vector-store")
+async def clear_vector_store(
+    current_user: User = Depends(auth.get_current_user) # SỬA TẠI ĐÂY
+):
+    user_path = rag_logic._get_user_path(current_user.id)
+    if os.path.exists(user_path):
+        shutil.rmtree(user_path)
+        os.makedirs(user_path, exist_ok=True)
+    return {"detail": "Đã xóa toàn bộ tài liệu đã upload"}
