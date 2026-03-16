@@ -1,8 +1,8 @@
 import os
+from typing import List
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from datetime import datetime
 import shutil
 
 # Import từ các file nội bộ
@@ -10,15 +10,13 @@ from database import get_db, ChatMessage, User, Conversation
 from app import rag_logic
 import auth
 
-app = FastAPI(title="SmartDoc Enterprise AI")
+app = FastAPI(title="SmartDoc Enterprise AI - OSSD 2026 Edition")
 
-
-# --- CẤU HÌNH CORS MẠNH TAY ---
-# Cho phép tất cả để vượt qua lỗi Blocked by CORS khi dùng Cloudflare
+# --- CẤU HÌNH CORS ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
-    allow_credentials=False, # Tắt cái này nếu dùng origins=["*"]
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -35,7 +33,6 @@ async def register(
         if db_user:
             raise HTTPException(status_code=400, detail="Tên đăng nhập đã tồn tại")
         
-        # auth.get_password_hash phải dùng bản bcrypt trực tiếp (đã sửa ở bước trước)
         hashed_pwd = auth.get_password_hash(password)
         new_user = User(username=username, hashed_password=hashed_pwd)
         
@@ -43,15 +40,13 @@ async def register(
         db.commit()
         db.refresh(new_user)
         
-        # Đảm bảo đường dẫn vector tồn tại
         user_path = os.path.join("vector_stores", f"user_{new_user.id}")
         os.makedirs(user_path, exist_ok=True)
         
         return {"message": "Đăng ký thành công"}
     except Exception as e:
-        # Log lỗi ra terminal của Docker để bạn debug
         print(f"🔥 Register Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
+        raise HTTPException(status_code=500, detail="Lỗi hệ thống đăng ký")
 
 # --- 2. ENDPOINT ĐĂNG NHẬP ---
 @app.post("/login")
@@ -73,17 +68,32 @@ async def login(
         "token_type": "bearer"
     }
 
-# --- 3. ENDPOINT UPLOAD TÀI LIỆU ---
+# --- 3. ENDPOINT UPLOAD ĐA TÀI LIỆU ---
 @app.post("/upload")
 async def upload(
-    file: UploadFile = File(...), 
+    files: List[UploadFile] = File(...), 
     chunk_size: int = Form(1000), 
     chunk_overlap: int = Form(100),
     current_user: User = Depends(auth.get_current_user)
 ):
-    content = await file.read()
-    count = rag_logic.process_file(content, file.filename, current_user.id, chunk_size, chunk_overlap)
-    return {"status": "ok", "chunks": count}
+    results = []
+    total_chunks = 0
+    for file in files:
+        try:
+            content = await file.read()
+            count = rag_logic.process_file(
+                file_content=content, 
+                filename=file.filename, 
+                user_id=current_user.id, 
+                chunk_size=chunk_size, 
+                chunk_overlap=chunk_overlap
+            )
+            total_chunks += count
+            results.append({"filename": file.filename, "chunks": count, "status": "success"})
+        except Exception as e:
+            results.append({"filename": file.filename, "status": "error", "reason": str(e)})
+    
+    return {"status": "ok", "total_files": len(files), "total_chunks": total_chunks, "details": results}
 
 # --- 4. ENDPOINT HỎI ĐÁP AI ---
 @app.post("/ask")
@@ -96,65 +106,64 @@ async def ask(
 ):
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
-        conv = Conversation(id=conversation_id, user_id=current_user.id, title=question_raw[:30] + "...")
+        conv = Conversation(id=conversation_id, user_id=current_user.id, title=question_raw[:30])
         db.add(conv)
         db.commit()
 
-    # Lưu tin nhắn người dùng (Zero-Knowledge)
     db.add(ChatMessage(conversation_id=conversation_id, user_id=current_user.id, role="user", content=question_enc))
 
-    # GỌI RAG LOGIC: Bây giờ truyền 3 tham số để dùng được Memory (Câu hỏi 6)
     result = rag_logic.get_answer(question_raw, current_user.id, conversation_id)
     
     answer_text = result["answer"]
     sources = result["sources"]
+    confidence = result.get("confidence", "N/A")
 
     db.add(ChatMessage(conversation_id=conversation_id, user_id=current_user.id, role="bot", content=answer_text))
     db.commit()
     
-    return {"answer_raw": answer_text, "sources": sources}
-# --- 5. LẤY LỊCH SỬ ---
+    return {"answer_raw": answer_text, "sources": sources, "confidence": confidence}
+
+# --- 5. LẤY LỊCH SỬ HỘI THOẠI (Phân trang ngược) ---
 @app.get("/history/{conversation_id}")
 async def get_history(
     conversation_id: str,
+    skip: int = 0,
+    limit: int = 20,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user)
 ):
+    # Lấy tin nhắn mới nhất trước (desc), sau đó đảo ngược lại để hiển thị (asc)
     messages = db.query(ChatMessage).filter(
         ChatMessage.conversation_id == conversation_id,
         ChatMessage.user_id == current_user.id
-    ).order_by(ChatMessage.timestamp.asc()).all()
-    return messages
+    ).order_by(ChatMessage.timestamp.desc()).offset(skip).limit(limit).all()
+    return messages[::-1] 
 
-
-# --- 6. LẤY DANH SÁCH TẤT CẢ HỘI THOẠI (DÀNH CHO SIDEBAR) ---
+# --- 6. LẤY SIDEBAR (Phân trang) ---
 @app.get("/conversations")
 async def get_all_conversations(
+    skip: int = 0,
+    limit: int = 15,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user)
 ):
-    # Lấy danh sách các cuộc hội thoại của User này, mới nhất xếp lên trên
-    conversations = db.query(Conversation).filter(
+    return db.query(Conversation).filter(
         Conversation.user_id == current_user.id
-    ).order_by(Conversation.created_at.desc()).all()
-    
-    return conversations
+    ).order_by(Conversation.created_at.desc()).offset(skip).limit(limit).all()
 
-# --- 7. XÓA LỊCH SỬ ---
+# --- 7. XÓA SẠCH LỊCH SỬ ---
 @app.delete("/clear-history")
 async def clear_history(current_user: User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     db.query(ChatMessage).filter(ChatMessage.user_id == current_user.id).delete()
     db.query(Conversation).filter(Conversation.user_id == current_user.id).delete()
     db.commit()
-    return {"message": "Đã xóa lịch sử chat"}
+    return {"message": "Đã xóa lịch sử"}
 
-# --- 8. XÓA VECTO STORE ---
+# --- 8. XÓA VECTOR STORE ---
 @app.delete("/clear-vector-store")
-async def clear_vector_store(
-    current_user: User = Depends(auth.get_current_user) # SỬA TẠI ĐÂY
-):
+async def clear_vector_store(current_user: User = Depends(auth.get_current_user)):
     user_path = rag_logic._get_user_path(current_user.id)
     if os.path.exists(user_path):
         shutil.rmtree(user_path)
         os.makedirs(user_path, exist_ok=True)
-    return {"detail": "Đã xóa toàn bộ tài liệu đã upload"}
+    return {"detail": "Đã xóa vector store"}

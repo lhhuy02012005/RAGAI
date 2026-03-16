@@ -1,5 +1,6 @@
 # a
 uvicorn main:app --reload --port 8000
+pip install -r requirements.txt
 
 Chúng ta sẽ cài đặt thêm thư viện để đọc DOCX và hỗ trợ OCR cho ảnh:
 

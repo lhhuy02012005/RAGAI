@@ -1,18 +1,16 @@
-# AI & RAG
+# AI & RAG Core
 langchain==0.3.16
 langchain-community==0.3.16
 langchain-ollama==0.2.2
 langchain-huggingface==0.1.2
 faiss-cpu>=1.9.0
 sentence-transformers==3.3.1
-transformers
-torch
+rank_bm25
+flashrank
 
-# Tài liệu
+# Document Loaders
 pdfplumber
-pypdf
-python-docx
-unstructured[pdf]
+docx2txt
 
 # Server & Security
 fastapi
@@ -20,13 +18,9 @@ uvicorn
 python-multipart
 python-dotenv
 sqlalchemy
-psycopg2-binary
 passlib[bcrypt]
 python-jose[cryptography]
 
 # Utilities
 numpy
-pandas
-tqdm
-
-rank_bm25
+scikit-learn
