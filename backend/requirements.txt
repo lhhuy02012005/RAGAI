@@ -10,6 +10,7 @@ sentence-transformers==3.3.1
 faiss-cpu>=1.9.0
 rank_bm25
 flashrank
+thefuzz
 
 # --- Document Loaders & Parsing ---
 pdfplumber
@@ -33,3 +34,6 @@ python-jose[cryptography]
 numpy<2.0.0
 scikit-learn>=1.5.0
 tiktoken
+
+paddleocr
+paddlepaddle

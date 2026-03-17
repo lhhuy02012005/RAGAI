@@ -11,13 +11,18 @@ from app import rag_logic
 import auth
 
 app = FastAPI(title="SmartDoc Enterprise AI - OSSD 2026 Edition")
-
+frontend_urls_raw = os.getenv("FRONTEND_URLS", "http://localhost:5173")
+origins = [url.strip() for url in frontend_urls_raw.split(",")]
 # --- CẤU HÌNH CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
-    allow_credentials=False,
+    # Thay vì dùng "*" (không an toàn), ta dùng danh sách origins cụ thể [cite: 121]
+    allow_origins=origins, 
+    # Cho phép gửi kèm Cookie hoặc thông tin xác thực nếu cần
+    allow_credentials=True, 
+    # Cho phép tất cả các phương thức (GET, POST, PUT, DELETE,...) 
     allow_methods=["*"],
+    # Cho phép tất cả các headers 
     allow_headers=["*"],
 )
 
@@ -69,6 +74,7 @@ async def login(
     }
 
 # --- 3. ENDPOINT UPLOAD ĐA TÀI LIỆU ---
+# --- 3. ENDPOINT UPLOAD ĐA TÀI LIỆU ---
 @app.post("/upload")
 async def upload(
     files: List[UploadFile] = File(...), 
@@ -76,21 +82,32 @@ async def upload(
     chunk_overlap: int = Form(100),
     current_user: User = Depends(auth.get_current_user)
 ):
+    print(f"\n📢 [API] Nhận yêu cầu upload {len(files)} file từ User ID: {current_user.id}")
     results = []
     total_chunks = 0
+    
     for file in files:
         try:
+            print(f"🔄 [API] Đang đọc file: {file.filename}")
             content = await file.read()
+            
+            if not content:
+                print(f"❌ [API] File {file.filename} rỗng!")
+                continue
+
+            # GỌI LOGIC XỬ LÝ
             count = rag_logic.process_file(
                 file_content=content, 
                 filename=file.filename, 
-                user_id=current_user.id, 
-                chunk_size=chunk_size, 
-                chunk_overlap=chunk_overlap
+                user_id=current_user.id
             )
+            
             total_chunks += count
             results.append({"filename": file.filename, "chunks": count, "status": "success"})
+            print(f"✅ [API] Đã xử lý xong {file.filename}: {count} chunks")
+            
         except Exception as e:
+            print(f"🔥 [API] Lỗi khi xử lý {file.filename}: {str(e)}")
             results.append({"filename": file.filename, "status": "error", "reason": str(e)})
     
     return {"status": "ok", "total_files": len(files), "total_chunks": total_chunks, "details": results}
