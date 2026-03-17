@@ -1,26 +1,35 @@
-# AI & RAG Core
+# --- AI & RAG Core (Đồng bộ dải 0.3.x) ---
+langchain-core==0.3.35
 langchain==0.3.16
 langchain-community==0.3.16
+langchain-text-splitters==0.3.6
 langchain-ollama==0.2.2
 langchain-huggingface==0.1.2
-faiss-cpu>=1.9.0
+langchain-experimental==0.3.0
 sentence-transformers==3.3.1
+faiss-cpu>=1.9.0
 rank_bm25
 flashrank
 
-# Document Loaders
+# --- Document Loaders & Parsing ---
 pdfplumber
 docx2txt
+unstructured[pdf]<0.16.0
 
-# Server & Security
-fastapi
-uvicorn
+# --- Server & Security (Sửa lỗi Undefined & Form Data) ---
+fastapi>=0.115.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+uvicorn>=0.30.0
 python-multipart
 python-dotenv
-sqlalchemy
+sqlalchemy>=2.0.0
+psycopg2-binary
 passlib[bcrypt]
+bcrypt
 python-jose[cryptography]
 
-# Utilities
-numpy
-scikit-learn
+# --- Utilities ---
+numpy<2.0.0
+scikit-learn>=1.5.0
+tiktoken
